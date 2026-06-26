@@ -1,19 +1,8 @@
-export default function Header({ cart }) {
+export default function Header({ cartCount }) {
   return (
-    <div style={styles.header}>
-      🍽️ Foodie Hub
-      <span>🛒 {cart}</span>
+    <div className="header">
+      <span>🍽️ Foodie Hub</span>
+      <span>🛒 {cartCount}</span>
     </div>
   );
 }
-
-const styles = {
-  header: {
-    background: "#ff4d4d",
-    color: "white",
-    padding: "15px",
-    display: "flex",
-    justifyContent: "space-between",
-    fontSize: "20px"
-  }
-};

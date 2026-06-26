@@ -1,4 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Header from "./Header";
+import Category from "./Category";
+import MenuList from "./MenuList";
+import Cart from "./Cart";
+import MenuModal from "./MenuModal";
 
 export default function App() {
   const [selected, setSelected] = useState(null);
@@ -11,9 +16,42 @@ export default function App() {
     phone: "",
     address: ""
   });
-  const [paymentMethod, setPaymentMethod] = useState("Cash on Delivery");
-  const [deliveryTime, setDeliveryTime] = useState("30-40 mins");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [deliveryTime, setDeliveryTime] = useState("");
   const [paymentDetails, setPaymentDetails] = useState("");
+  const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState({});
+
+  useEffect(() => {
+    const savedState = localStorage.getItem("foodie-hub-state");
+
+    if (!savedState) return;
+
+    try {
+      const parsed = JSON.parse(savedState);
+      setActiveCategory(parsed.activeCategory || "All");
+      setCart(parsed.cart || []);
+      setCustomerInfo(parsed.customerInfo || { name: "", phone: "", address: "" });
+      setPaymentMethod(parsed.paymentMethod || "");
+      setDeliveryTime(parsed.deliveryTime || "");
+      setPaymentDetails(parsed.paymentDetails || "");
+    } catch {
+      localStorage.removeItem("foodie-hub-state");
+    }
+  }, []);
+
+  useEffect(() => {
+    const stateToSave = {
+      activeCategory,
+      cart,
+      customerInfo,
+      paymentMethod,
+      deliveryTime,
+      paymentDetails
+    };
+
+    localStorage.setItem("foodie-hub-state", JSON.stringify(stateToSave));
+  }, [activeCategory, cart, customerInfo, paymentMethod, deliveryTime, paymentDetails]);
 
   const menu = [
     { id: 1, name: "Butter Chicken", price: 260, category: "Non-Veg", img: "https://images.unsplash.com/photo-1705174427925-744646e72117?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8YnV0dGVyJTIwY2hpY2tlbnxlbnwwfHwwfHx8MA%3D%3D", desc: "Creamy Punjabi curry" },
@@ -98,8 +136,78 @@ export default function App() {
   };
 
   const removeItem = (id) => setCart((prev) => prev.filter((c) => c.id !== id));
+  const clearCart = () => {
+    setCart([]);
+    setShowCheckout(false);
+    setOrderMessage("Cart cleared.");
+  };
 
   const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+
+  const validateField = (field, value, currentPaymentMethod = paymentMethod) => {
+    switch (field) {
+      case "name":
+        return value.trim() ? "" : "Please enter your full name.";
+      case "phone":
+        return /^\d{10}$/.test(value.replace(/\s+/g, "")) ? "" : "Please enter a valid 10-digit phone number.";
+      case "address":
+        return value.trim().length >= 5 ? "" : "Please enter your delivery address.";
+      case "paymentMethod":
+        return value ? "" : "Please select a payment method.";
+      case "deliveryTime":
+        return value ? "" : "Please select a delivery time.";
+      case "paymentDetails":
+        if (currentPaymentMethod !== "UPI" && currentPaymentMethod !== "Card") return "";
+        return value.trim() ? "" : currentPaymentMethod === "UPI" ? "Please enter your UPI ID." : "Please enter your card details.";
+      default:
+        return "";
+    }
+  };
+
+  const validateCheckout = () => {
+    const nextErrors = {
+      name: validateField("name", customerInfo.name),
+      phone: validateField("phone", customerInfo.phone),
+      address: validateField("address", customerInfo.address),
+      paymentMethod: validateField("paymentMethod", paymentMethod),
+      deliveryTime: validateField("deliveryTime", deliveryTime),
+      paymentDetails: validateField("paymentDetails", paymentDetails, paymentMethod)
+    };
+
+    return Object.fromEntries(Object.entries(nextErrors).filter(([, value]) => value));
+  };
+
+  const handleCustomerInfoChange = (field, value) => {
+    setCustomerInfo((prev) => ({ ...prev, [field]: value }));
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    setErrors((prev) => ({ ...prev, [field]: validateField(field, value) }));
+    setOrderMessage("");
+  };
+
+  const handlePaymentMethodChange = (value) => {
+    setPaymentMethod(value);
+    setTouched((prev) => ({ ...prev, paymentMethod: true, paymentDetails: true }));
+    setErrors((prev) => ({
+      ...prev,
+      paymentMethod: validateField("paymentMethod", value),
+      paymentDetails: validateField("paymentDetails", paymentDetails, value)
+    }));
+    setOrderMessage("");
+  };
+
+  const handleDeliveryTimeChange = (value) => {
+    setDeliveryTime(value);
+    setTouched((prev) => ({ ...prev, deliveryTime: true }));
+    setErrors((prev) => ({ ...prev, deliveryTime: validateField("deliveryTime", value) }));
+    setOrderMessage("");
+  };
+
+  const handlePaymentDetailsChange = (value) => {
+    setPaymentDetails(value);
+    setTouched((prev) => ({ ...prev, paymentDetails: true }));
+    setErrors((prev) => ({ ...prev, paymentDetails: validateField("paymentDetails", value, paymentMethod) }));
+    setOrderMessage("");
+  };
 
   const handlePlaceOrder = (e) => {
     e.preventDefault();
@@ -109,195 +217,147 @@ export default function App() {
       return;
     }
 
-    if (!customerInfo.name || !customerInfo.phone || !customerInfo.address) {
-      setOrderMessage("Please fill in your name, phone, and address.");
-      return;
-    }
+    const nextErrors = validateCheckout();
 
-    if ((paymentMethod === "UPI" || paymentMethod === "Card") && !paymentDetails) {
-      setOrderMessage(`Please enter your ${paymentMethod === "UPI" ? "UPI ID" : "card details"}.`);
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      setTouched({ name: true, phone: true, address: true, paymentMethod: true, deliveryTime: true, paymentDetails: true });
+      setOrderMessage("Please complete the highlighted fields.");
       return;
     }
 
     const count = cart.reduce((sum, item) => sum + item.qty, 0);
-    setOrderMessage(`Thank you ${customerInfo.name}! Your order for ${count} item${count > 1 ? "s" : ""} is confirmed via ${paymentMethod}. Estimated delivery: ${deliveryTime}.`);
+    const successMessage = `Thank you ${customerInfo.name}! Your order for ${count} item${count > 1 ? "s" : ""} is confirmed via ${paymentMethod}. Estimated delivery: ${deliveryTime}.`;
+    window.alert(successMessage);
+    setOrderMessage(successMessage);
     setCart([]);
     setCustomerInfo({ name: "", phone: "", address: "" });
-    setPaymentMethod("Cash on Delivery");
-    setDeliveryTime("30-40 mins");
+    setPaymentMethod("");
+    setDeliveryTime("");
     setPaymentDetails("");
     setShowCheckout(false);
   };
 
   return (
     <div style={styles.page}>
-      <div style={styles.header}>
-        <span>🍽️ Foodie Hub</span>
-        <span>🛒 {cart.length}</span>
-      </div>
-
-      <div style={styles.categoryRow}>
-        {categories.map((category) => (
-          <button
-            key={category}
-            onClick={() => setActiveCategory(category)}
-            style={{
-              ...styles.categoryBtn,
-              ...(activeCategory === category ? styles.activeCategoryBtn : {})
-            }}
-          >
-            {category}
-          </button>
-        ))}
-      </div>
+      <Header cartCount={cart.length} />
+      <Category categories={categories} activeCategory={activeCategory} setCategory={setActiveCategory} />
 
       <div style={styles.container}>
-        <div style={styles.menu}>
-          {filteredMenu.map((item) => (
-            <div key={item.id} style={styles.card}>
-              <img src={item.img} alt={item.name} style={styles.img} />
-              <h4>{item.name}</h4>
-              <p>{item.desc}</p>
-              <p style={styles.price}>₹{item.price}</p>
-
-              <div style={styles.btnRow}>
-                <button onClick={() => setSelected(item)}>View</button>
-                <button onClick={() => addToCart(item)}>Add</button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div style={styles.cart}>
-          <h3>Your Order</h3>
-
-          {cart.length === 0 ? (
-            <p style={styles.empty}>Your cart is empty.</p>
-          ) : (
-            cart.map((item) => (
-              <div key={item.id} style={styles.cartItem}>
-                <div>
-                  <strong>{item.name}</strong>
-                  <div style={styles.smallText}>₹{item.price * item.qty}</div>
-                </div>
-
-                <div style={styles.qtyControls}>
-                  <button onClick={() => decreaseQty(item.id)}>-</button>
-                  <span>{item.qty}</span>
-                  <button onClick={() => increaseQty(item.id)}>+</button>
-                  <button onClick={() => removeItem(item.id)} style={styles.removeBtn}>Remove</button>
-                </div>
-              </div>
-            ))
-          )}
-
-          <hr />
-          <h3>Total: ₹{total}</h3>
-
-          {cart.length > 0 && (
-            <button style={styles.orderBtn} onClick={() => setShowCheckout(true)}>
-              Place Order
-            </button>
-          )}
-
-          {showCheckout && cart.length > 0 && (
-            <div style={styles.overlay} onClick={() => setShowCheckout(false)}>
-              <div style={styles.checkoutModal} onClick={(e) => e.stopPropagation()}>
-                <h3>Checkout</h3>
-                <p style={styles.modalText}>Please confirm your details before placing the order.</p>
-
-                <form style={styles.checkoutForm} onSubmit={handlePlaceOrder}>
-                  <label style={styles.label}>Full Name</label>
-                  <input
-                    style={styles.input}
-                    placeholder="Enter your name"
-                    value={customerInfo.name}
-                    onChange={(e) => setCustomerInfo({ ...customerInfo, name: e.target.value })}
-                  />
-
-                  <label style={styles.label}>Phone Number</label>
-                  <input
-                    style={styles.input}
-                    placeholder="Enter phone number"
-                    value={customerInfo.phone}
-                    onChange={(e) => setCustomerInfo({ ...customerInfo, phone: e.target.value })}
-                  />
-
-                  <label style={styles.label}>Delivery Address</label>
-                  <textarea
-                    style={styles.textarea}
-                    placeholder="Enter delivery address"
-                    value={customerInfo.address}
-                    onChange={(e) => setCustomerInfo({ ...customerInfo, address: e.target.value })}
-                  />
-
-                  <label style={styles.label}>Delivery Time</label>
-                  <select
-                    style={styles.select}
-                    value={deliveryTime}
-                    onChange={(e) => setDeliveryTime(e.target.value)}
-                  >
-                    <option value="20-30 mins">20-30 mins</option>
-                    <option value="30-40 mins">30-40 mins</option>
-                    <option value="45-60 mins">45-60 mins</option>
-                  </select>
-
-                  <label style={styles.label}>Payment Method</label>
-                  <div style={styles.paymentOptions}>
-                    {['Cash on Delivery', 'UPI', 'Card'].map((method) => (
-                      <label key={method} style={styles.paymentOption}>
-                        <input
-                          type="radio"
-                          name="payment"
-                          value={method}
-                          checked={paymentMethod === method}
-                          onChange={(e) => setPaymentMethod(e.target.value)}
-                        />
-                        {method}
-                      </label>
-                    ))}
-                  </div>
-
-                  {(paymentMethod === "UPI" || paymentMethod === "Card") && (
-                    <>
-                      <label style={styles.label}>{paymentMethod === "UPI" ? "UPI ID" : "Card Details"}</label>
-                      <input
-                        style={styles.input}
-                        placeholder={paymentMethod === "UPI" ? "Enter your UPI ID" : "Enter card details"}
-                        value={paymentDetails}
-                        onChange={(e) => setPaymentDetails(e.target.value)}
-                      />
-                    </>
-                  )}
-
-                  <div style={styles.checkoutActions}>
-                    <button type="button" style={styles.cancelBtn} onClick={() => setShowCheckout(false)}>
-                      Cancel
-                    </button>
-                    <button type="submit" style={styles.submitBtn}>
-                      Confirm Order
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {orderMessage && <p style={styles.success}>{orderMessage}</p>}
-        </div>
+        <MenuList data={filteredMenu} setSelected={setSelected} addToCart={addToCart} />
+        <Cart
+          cart={cart}
+          increaseQty={increaseQty}
+          decreaseQty={decreaseQty}
+          removeItem={removeItem}
+          clearCart={clearCart}
+          total={total}
+          showCheckout={showCheckout}
+          setShowCheckout={setShowCheckout}
+          customerInfo={customerInfo}
+          setCustomerInfo={setCustomerInfo}
+          paymentMethod={paymentMethod}
+          setPaymentMethod={setPaymentMethod}
+          deliveryTime={deliveryTime}
+          setDeliveryTime={setDeliveryTime}
+          paymentDetails={paymentDetails}
+          setPaymentDetails={setPaymentDetails}
+          handlePlaceOrder={handlePlaceOrder}
+          orderMessage={orderMessage}
+        />
       </div>
 
-      {selected && (
-        <div style={styles.overlay} onClick={() => setSelected(null)}>
-          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <img src={selected.img} alt={selected.name} style={styles.modalImg} />
-            <h2>{selected.name}</h2>
-            <p>{selected.desc}</p>
-            <h3>₹{selected.price}</h3>
-            <button onClick={() => setSelected(null)}>Close</button>
+      {showCheckout && cart.length > 0 && (
+        <div className="modal-overlay" onClick={() => setShowCheckout(false)}>
+          <div className="checkout-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Checkout</h3>
+            <p className="modal-text">Please confirm your details before placing the order.</p>
+
+            <form className="checkout-form" onSubmit={handlePlaceOrder}>
+              <label className="field-label">Full Name</label>
+              <input
+                className={`form-input ${touched.name && errors.name ? "input-error" : ""}`}
+                placeholder="Enter your name"
+                value={customerInfo.name}
+                onChange={(e) => handleCustomerInfoChange("name", e.target.value)}
+              />
+              {touched.name && errors.name && <p className="field-error">{errors.name}</p>}
+
+              <label className="field-label">Phone Number</label>
+              <input
+                className={`form-input ${touched.phone && errors.phone ? "input-error" : ""}`}
+                placeholder="Enter phone number"
+                value={customerInfo.phone}
+                onChange={(e) => handleCustomerInfoChange("phone", e.target.value)}
+              />
+              {touched.phone && errors.phone && <p className="field-error">{errors.phone}</p>}
+
+              <label className="field-label">Delivery Address</label>
+              <textarea
+                className={`form-textarea ${touched.address && errors.address ? "input-error" : ""}`}
+                placeholder="Enter delivery address"
+                value={customerInfo.address}
+                onChange={(e) => handleCustomerInfoChange("address", e.target.value)}
+              />
+              {touched.address && errors.address && <p className="field-error">{errors.address}</p>}
+
+              <label className="field-label">Delivery Time</label>
+              <select
+                className={`form-select ${touched.deliveryTime && errors.deliveryTime ? "input-error" : ""}`}
+                value={deliveryTime}
+                onChange={(e) => handleDeliveryTimeChange(e.target.value)}
+              >
+                <option value="">Select delivery time</option>
+                <option value="20-30 mins">20-30 mins</option>
+                <option value="30-40 mins">30-40 mins</option>
+                <option value="45-60 mins">45-60 mins</option>
+              </select>
+              {touched.deliveryTime && errors.deliveryTime && <p className="field-error">{errors.deliveryTime}</p>}
+
+              <label className="field-label">Payment Method</label>
+              <div className={`payment-options ${touched.paymentMethod && errors.paymentMethod ? "payment-error" : ""}`}>
+                {['Cash on Delivery', 'UPI', 'Card'].map((method) => (
+                  <label key={method} className="payment-option">
+                    <input
+                      type="radio"
+                      name="payment"
+                      value={method}
+                      checked={paymentMethod === method}
+                      onChange={(e) => handlePaymentMethodChange(e.target.value)}
+                    />
+                    {method}
+                  </label>
+                ))}
+              </div>
+              {touched.paymentMethod && errors.paymentMethod && <p className="field-error">{errors.paymentMethod}</p>}
+
+              {(paymentMethod === "UPI" || paymentMethod === "Card") && (
+                <>
+                  <label className="field-label">{paymentMethod === "UPI" ? "UPI ID" : "Card Details"}</label>
+                  <input
+                    className={`form-input ${touched.paymentDetails && errors.paymentDetails ? "input-error" : ""}`}
+                    placeholder={paymentMethod === "UPI" ? "Enter your UPI ID" : "Enter card details"}
+                    value={paymentDetails}
+                    onChange={(e) => handlePaymentDetailsChange(e.target.value)}
+                  />
+                  {touched.paymentDetails && errors.paymentDetails && <p className="field-error">{errors.paymentDetails}</p>}
+                </>
+              )}
+
+              <div className="checkout-actions">
+                <button type="button" className="cancel-btn" onClick={() => setShowCheckout(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="submit-btn">
+                  Confirm Order
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
+
+      {selected && <MenuModal item={selected} close={() => setSelected(null)} />}
     </div>
   );
 }

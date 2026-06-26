@@ -1,22 +1,15 @@
-export default function Category({ setCategory }) {
-  const cats = ["All", "Starter", "Main", "Drinks"];
-
+export default function Category({ categories, activeCategory, setCategory }) {
   return (
-    <div style={styles.box}>
-      {cats.map((c) => (
-        <button key={c} onClick={() => setCategory(c)}>
-          {c}
+    <div className="category-box">
+      {categories.map((category) => (
+        <button
+          key={category}
+          onClick={() => setCategory(category)}
+          className={activeCategory === category ? "active-category" : ""}
+        >
+          {category}
         </button>
       ))}
     </div>
   );
 }
-
-const styles = {
-  box: {
-    display: "flex",
-    justifyContent: "center",
-    gap: "10px",
-    margin: "10px"
-  }
-};

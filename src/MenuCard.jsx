@@ -1,33 +1,15 @@
 export default function MenuCard({ item, setSelected, addToCart }) {
   return (
-    <div style={styles.card}>
-      <img src={item.image} alt={item.name} style={styles.img} />
+    <div className="card">
+      <img src={item.img || item.image} alt={item.name} />
+      <h4>{item.name}</h4>
+      <p>{item.desc}</p>
+      <p className="price-text">₹{item.price}</p>
 
-      <h3>{item.name}</h3>
-      <p>₹{item.price}</p>
-
-      <div style={styles.btnRow}>
+      <div className="card-actions">
         <button onClick={() => setSelected(item)}>View</button>
         <button onClick={() => addToCart(item)}>Add</button>
       </div>
     </div>
   );
 }
-
-const styles = {
-  card: {
-    background: "#fff",
-    padding: "10px",
-    borderRadius: "10px",
-    boxShadow: "0 0 10px #ccc"
-  },
-  img: {
-    width: "100%",
-    height: "120px",
-    objectFit: "cover"
-  },
-  btnRow: {
-    display: "flex",
-    justifyContent: "space-between"
-  }
-};
